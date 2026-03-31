@@ -17,6 +17,8 @@
 3. SQL Editor'a yapıştırın
 4. "Run" butonuna tıklayın
 
+> Not: Bu SQL dosyası hem yeni kurulum hem de eski tabloya `password_hash` ve `room_slug` alanlarını eklemek için gerekli `ALTER TABLE` komutlarını içerir.
+
 ## 3. Backend Kurulumu
 
 ```bash
@@ -64,28 +66,35 @@ Frontend `http://localhost:3000` adresinde çalışacak.
 ## 5. Uygulamayı Test Etme
 
 1. Tarayıcıda `http://localhost:3000` adresine gidin
-2. Bir nickname girin ve "Giriş Yap" butonuna tıklayın
-3. Chat sayfasında mesaj göndermeye başlayın
+2. Bir nickname ve şifre girin
+3. Nickname yoksa otomatik hesap oluşturulur, varsa şifre doğrulanır
+4. Oda seçip mesajlaşmaya başlayın
+5. Online listesinde yalnızca son 5 dakikada mesaj atan kullanıcıların göründüğünü kontrol edin
 
 ## API Endpoints
 
 ### Kimlik Doğrulama
-- `POST /api/auth/login` - Nickname ile giriş yap
+- `POST /api/auth/login` - Nickname+şifre ile kayıt/giriş yap
   ```json
   {
-    "nickname": "string"
+    "nickname": "string",
+    "password": "string"
   }
   ```
 
+### Odalar
+- `GET /api/rooms` - Komik arkeoloji odalarını getir
+
 ### Kullanıcılar
-- `GET /api/users` - Tüm kullanıcıları getir
+- `GET /api/users` - Son 5 dakikada mesaj atan kullanıcıları getir
 
 ### Mesajlar
-- `GET /api/messages?limit=50&offset=0` - Mesajları getir
+- `GET /api/messages?room_slug=kazma-kurek-kahvesi&limit=50&offset=0` - Odaya göre mesajları getir
 - `POST /api/messages` - Yeni mesaj gönder
   ```json
   {
     "user_id": "uuid",
+    "room_slug": "kazma-kurek-kahvesi",
     "content": "string"
   }
   ```

@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 import { useState, useEffect, useRef } from 'react';
-import { getMessages, sendMessage, getUsers } from '../lib/api';
+import { getMessages, sendMessage, getUsers, getRooms } from '../lib/api';
 import styles from './ChatPage.module.css';
 
 export default function ChatPage({ user, onLogout }) {
@@ -9,19 +9,31 @@ export default function ChatPage({ user, onLogout }) {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [activeRoom, setActiveRoom] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
-    loadMessages();
+    initializeRooms();
     loadUsers();
-    const interval = setInterval(loadMessages, 2000);
     const usersInterval = setInterval(loadUsers, 5000);
 
     return () => {
-      clearInterval(interval);
       clearInterval(usersInterval);
     };
   }, []);
+
+  useEffect(() => {
+    if (!activeRoom) return;
+
+    setLoading(true);
+    loadMessages(activeRoom);
+    const interval = setInterval(() => loadMessages(activeRoom), 2000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [activeRoom]);
 
   useEffect(() => {
     scrollToBottom();
@@ -31,9 +43,21 @@ export default function ChatPage({ user, onLogout }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const loadMessages = async () => {
+  const initializeRooms = async () => {
     try {
-      const data = await getMessages(50);
+      const roomData = await getRooms();
+      setRooms(roomData);
+      if (roomData.length > 0) {
+        setActiveRoom(roomData[0].slug);
+      }
+    } catch (error) {
+      console.error('Odalar yüklenemedi:', error);
+    }
+  };
+
+  const loadMessages = async (roomSlug) => {
+    try {
+      const data = await getMessages(roomSlug, 50);
       setMessages(data);
     } catch (error) {
       console.error('Mesajlar yüklenemedi:', error);
@@ -54,12 +78,13 @@ export default function ChatPage({ user, onLogout }) {
   const handleSendMessage = async (e) => {
     e.preventDefault();
 
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() || !activeRoom) return;
 
     try {
-      await sendMessage(user.id, newMessage);
+      await sendMessage(user.id, newMessage, activeRoom);
       setNewMessage('');
-      loadMessages();
+      loadMessages(activeRoom);
+      loadUsers();
     } catch (error) {
       console.error('Mesaj gönderilemedi:', error);
     }
@@ -81,7 +106,8 @@ export default function ChatPage({ user, onLogout }) {
         </div>
 
         <div className={styles.usersList}>
-          <h3>Çevrimiçi Kullanıcılar ({users.length})</h3>
+          <h3>Aktif Kullanıcılar ({users.length})</h3>
+          <p className={styles.helperText}>Son 5 dakikada mesaj atanlar</p>
           <div className={styles.users}>
             {users.map((u) => (
               <div key={u.id} className={styles.userItem}>
@@ -94,11 +120,26 @@ export default function ChatPage({ user, onLogout }) {
       </div>
 
       <div className={styles.chatArea}>
+        <div className={styles.roomsBar}>
+          {rooms.map((room) => (
+            <button
+              key={room.slug}
+              type="button"
+              className={`${styles.roomButton} ${
+                activeRoom === room.slug ? styles.roomButtonActive : ''
+              }`}
+              onClick={() => setActiveRoom(room.slug)}
+            >
+              {room.name}
+            </button>
+          ))}
+        </div>
+
         <div className={styles.messagesContainer}>
           {messages.length === 0 ? (
             <div className={styles.emptyState}>
-              <p>Henüz mesaj yok</p>
-              <p>Sohbete başlayın! 👋</p>
+              <p>Bu odada henüz mesaj yok</p>
+              <p>İlk arkeolojik espriyi sen yap! 🏺</p>
             </div>
           ) : (
             messages.map((msg) => (

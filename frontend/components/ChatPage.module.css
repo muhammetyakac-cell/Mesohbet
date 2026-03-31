@@ -1,11 +1,11 @@
 .container {
   display: flex;
-  height: 100vh;
+  min-height: 100vh;
   background: #f5f5f5;
 }
 
 .sidebar {
-  width: 280px;
+  width: 300px;
   background: white;
   border-right: 1px solid #e0e0e0;
   padding: 20px;
@@ -44,11 +44,6 @@
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
-  transition: all 0.3s;
-}
-
-.logoutBtn:hover {
-  background: rgba(255, 255, 255, 0.3);
 }
 
 .usersList {
@@ -56,10 +51,16 @@
 }
 
 .usersList h3 {
-  margin: 0 0 12px 0;
+  margin: 0 0 4px 0;
   font-size: 14px;
   color: #666;
   text-transform: uppercase;
+}
+
+.helperText {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  color: #888;
 }
 
 .users {
@@ -93,6 +94,32 @@
   display: flex;
   flex-direction: column;
   background: white;
+}
+
+.roomsBar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  overflow-x: auto;
+  background: #faf9ff;
+}
+
+.roomButton {
+  border: 1px solid #d2cdf5;
+  background: #fff;
+  color: #4a3f92;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.roomButtonActive {
+  border-color: #6f60d8;
+  background: #6f60d8;
+  color: white;
 }
 
 .messagesContainer {
@@ -160,7 +187,7 @@
 .inputForm {
   display: flex;
   gap: 10px;
-  padding: 15px 20px;
+  padding: 12px;
   border-top: 1px solid #e0e0e0;
   background: white;
 }
@@ -171,7 +198,6 @@
   border: 2px solid #e0e0e0;
   border-radius: 8px;
   font-size: 14px;
-  transition: border-color 0.3s;
 }
 
 .input:focus {
@@ -180,18 +206,13 @@
 }
 
 .sendBtn {
-  padding: 12px 24px;
+  padding: 12px 18px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
-  transition: transform 0.2s;
-}
-
-.sendBtn:hover:not(:disabled) {
-  transform: translateY(-2px);
 }
 
 .sendBtn:disabled {
@@ -208,7 +229,7 @@
   color: #666;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .container {
     flex-direction: column;
   }
@@ -217,10 +238,38 @@
     width: 100%;
     border-right: none;
     border-bottom: 1px solid #e0e0e0;
-    padding: 15px;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .userInfo {
+    padding: 14px;
+  }
+
+  .userInfo h2 {
+    font-size: 16px;
+  }
+
+  .nickname {
+    font-size: 16px;
+  }
+
+  .users {
+    max-height: 140px;
+    overflow-y: auto;
+  }
+
+  .messagesContainer {
+    padding: 12px;
   }
 
   .message {
-    max-width: 100%;
+    max-width: 88%;
+  }
+
+  .inputForm {
+    padding: 10px;
+    position: sticky;
+    bottom: 0;
   }
 }

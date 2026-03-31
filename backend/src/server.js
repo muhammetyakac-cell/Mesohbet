@@ -1,9 +1,18 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
+
+const CHAT_ROOMS = [
+  { slug: 'kazma-kurek-kahvesi', name: 'Kazma Kürek Kahvesi ☕' },
+  { slug: 'hitit-hikaye-kulubu', name: 'Hitit Hikâye Kulübü 📜' },
+  { slug: 'mozaik-muhabbet', name: 'Mozaik Muhabbet 🧩' },
+  { slug: 'lahit-lobi', name: 'Lahit Lobisi 🪦' },
+  { slug: 'tablet-takimi', name: 'Kil Tablet Takımı 🧱' },
+];
 
 // Middleware
 app.use(cors());
@@ -15,47 +24,89 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
+const hashPassword = (password) => {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+};
+
+const verifyPassword = (password, storedHash) => {
+  const [salt, originalHash] = (storedHash || '').split(':');
+
+  if (!salt || !originalHash) return false;
+
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(originalHash));
+};
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+app.get('/api/rooms', (req, res) => {
+  res.json(CHAT_ROOMS);
+});
+
 // Kullanıcı oluştur / Login
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { nickname } = req.body;
+    const { nickname, password } = req.body;
 
-    if (!nickname || nickname.trim().length === 0) {
-      return res.status(400).json({ error: 'Nickname gerekli' });
+    if (!nickname || nickname.trim().length < 3) {
+      return res.status(400).json({ error: 'Nickname en az 3 karakter olmalı' });
     }
 
-    // Nickname kontrolü - benzersiz mi?
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('nickname', nickname)
-      .single();
-
-    if (existingUser) {
-      return res.status(409).json({ error: 'Bu nickname zaten kullanılıyor' });
+    if (!password || password.length < 4) {
+      return res.status(400).json({ error: 'Şifre en az 4 karakter olmalı' });
     }
 
-    // Yeni kullanıcı oluştur
-    const { data: newUser, error } = await supabase
-      .from('users')
-      .insert([
-        {
-          nickname,
-          created_at: new Date().toISOString(),
-        },
-      ])
-      .select()
-      .single();
+    const normalizedNickname = nickname.trim();
 
-    if (error) throw error;
+    const { data: existingUser, error: findError } = await supabase
+      .from('users')
+      .select('id, nickname, password_hash, created_at')
+      .eq('nickname', normalizedNickname)
+      .maybeSingle();
+
+    if (findError) throw findError;
+
+    if (!existingUser) {
+      const passwordHash = hashPassword(password);
+
+      const { data: newUser, error } = await supabase
+        .from('users')
+        .insert([
+          {
+            nickname: normalizedNickname,
+            password_hash: passwordHash,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ])
+        .select('id, nickname, created_at')
+        .single();
+
+      if (error) throw error;
+
+      return res.json({
+        user: newUser,
+        isNewUser: true,
+        message: 'Hesap oluşturuldu ve giriş yapıldı',
+      });
+    }
+
+    if (!verifyPassword(password, existingUser.password_hash)) {
+      return res.status(401).json({ error: 'Nickname veya şifre hatalı' });
+    }
 
     res.json({
-      user: newUser,
+      user: {
+        id: existingUser.id,
+        nickname: existingUser.nickname,
+        created_at: existingUser.created_at,
+      },
+      isNewUser: false,
       message: 'Başarıyla giriş yapıldı',
     });
   } catch (error) {
@@ -64,17 +115,37 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Tüm kullanıcıları getir
+// Son 5 dakikada mesaj atan kullanıcılar
 app.get('/api/users', async (req, res) => {
   try {
-    const { data: users, error } = await supabase
-      .from('users')
-      .select('id, nickname, created_at')
-      .order('created_at', { ascending: false });
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    const { data: activeMessages, error } = await supabase
+      .from('messages')
+      .select('created_at, users:user_id(id, nickname)')
+      .gte('created_at', fiveMinutesAgo)
+      .order('created_at', { ascending: false })
+      .limit(200);
 
     if (error) throw error;
 
-    res.json(users);
+    const uniqueUsers = [];
+    const seenUserIds = new Set();
+
+    (activeMessages || []).forEach((message) => {
+      const user = message.users;
+
+      if (user?.id && !seenUserIds.has(user.id)) {
+        seenUserIds.add(user.id);
+        uniqueUsers.push({
+          id: user.id,
+          nickname: user.nickname,
+          last_message_at: message.created_at,
+        });
+      }
+    });
+
+    res.json(uniqueUsers);
   } catch (error) {
     console.error('Kullanıcı getirme hatası:', error);
     res.status(500).json({ error: 'Kullanıcılar getirilemedi' });
@@ -84,18 +155,25 @@ app.get('/api/users', async (req, res) => {
 // Mesaj gönder
 app.post('/api/messages', async (req, res) => {
   try {
-    const { user_id, content } = req.body;
+    const { user_id: userId, content, room_slug: roomSlug } = req.body;
 
-    if (!user_id || !content) {
-      return res.status(400).json({ error: 'user_id ve content gerekli' });
+    if (!userId || !content || !roomSlug) {
+      return res.status(400).json({ error: 'user_id, content ve room_slug gerekli' });
+    }
+
+    const validRoom = CHAT_ROOMS.some((room) => room.slug === roomSlug);
+
+    if (!validRoom) {
+      return res.status(400).json({ error: 'Geçersiz oda' });
     }
 
     const { data: message, error } = await supabase
       .from('messages')
       .insert([
         {
-          user_id,
+          user_id: userId,
           content,
+          room_slug: roomSlug,
           created_at: new Date().toISOString(),
         },
       ])
@@ -114,8 +192,15 @@ app.post('/api/messages', async (req, res) => {
 // Son mesajları getir (pagination)
 app.get('/api/messages', async (req, res) => {
   try {
-    const limit = req.query.limit || 50;
-    const offset = req.query.offset || 0;
+    const limit = Number(req.query.limit || 50);
+    const offset = Number(req.query.offset || 0);
+    const roomSlug = req.query.room_slug || CHAT_ROOMS[0].slug;
+
+    const validRoom = CHAT_ROOMS.some((room) => room.slug === roomSlug);
+
+    if (!validRoom) {
+      return res.status(400).json({ error: 'Geçersiz oda' });
+    }
 
     const { data: messages, error } = await supabase
       .from('messages')
@@ -123,14 +208,16 @@ app.get('/api/messages', async (req, res) => {
         id,
         content,
         created_at,
+        room_slug,
         users:user_id(id, nickname)
       `)
+      .eq('room_slug', roomSlug)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
 
-    res.json(messages.reverse());
+    res.json((messages || []).reverse());
   } catch (error) {
     console.error('Mesaj getirme hatası:', error);
     res.status(500).json({ error: 'Mesajlar getirilemedi' });
